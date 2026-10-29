@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chronicle (on-device AI)</title>
+<style>
+:root{--bg:#f4efe6;--card:#fffdf8;--ink:#2a2118;--mute:#7a6c5a;--line:#ddd2bf;--acc:#8c2f1b;--acc2:#2f5d62;--sea:#b9cdd2;--land:#e3d9c3;--bd:#3a2c1c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17130f;--card:#211b15;--ink:#efe6d6;--mute:#a09280;--line:#3a3025;--acc:#e0694d;--acc2:#6fb3ba;--sea:#16262b;--land:#4a4033;--bd:#d8c9ae}}
+:root[data-theme="dark"]{--bg:#17130f;--card:#211b15;--ink:#efe6d6;--mute:#a09280;--line:#3a3025;--acc:#e0694d;--acc2:#6fb3ba;--sea:#16262b;--land:#4a4033;--bd:#d8c9ae}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 Georgia,serif;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+button,input,textarea,select{font:inherit;color:inherit}h1,h2,h3{margin:0;font-weight:600}
+#app{height:100%;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card)}
+.top h1{font-size:18px}.date{color:var(--acc);font-variant:small-caps;letter-spacing:.06em}
+.btn{min-height:44px;padding:6px 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);cursor:pointer}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}.btn:disabled{opacity:.45}
+.setup{max-width:620px;margin:0 auto;padding:22px 18px;overflow:auto}.setup p{color:var(--mute)}
+label{display:block;margin:14px 0 6px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.08em}
+input[type=text],textarea,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+textarea{min-height:70px;resize:none}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{min-height:38px;padding:4px 13px;border-radius:20px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-size:14px}
+.chip.on{background:var(--acc2);color:#fff;border-color:var(--acc2)}
+.main{flex:1;display:flex;min-height:0}
+.mapwrap{flex:1;position:relative;min-width:0;background:var(--sea)}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+.zoom{position:absolute;left:10px;top:10px;display:flex;flex-direction:column;gap:6px}.zoom button{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:22px}
+#loc{position:absolute;left:10px;bottom:8px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:3px 10px;font-size:13px;color:var(--mute)}
+.panel{width:390px;flex:none;border-left:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{flex:1;min-height:44px;border:0;background:none;border-bottom:3px solid transparent;cursor:pointer}.tabs .on{border-color:var(--acc);color:var(--acc);font-weight:700}
+.body{flex:1;overflow:auto;padding:12px 14px;-webkit-overflow-scrolling:touch}
+.foot{padding:10px 14px;border-top:1px solid var(--line)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-bottom:10px;font-size:13px;color:var(--mute)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc2)}
+.act{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin:6px 0}.act span{flex:1}.act button{border:0;background:none;font-size:20px;cursor:pointer}
+.ev{border-left:3px solid var(--acc);padding-left:10px;margin:8px 0}.ev b{display:block}.ev.m{border-color:var(--line)}
+.msg{margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--bg)}.msg.me{background:none;border:1px solid var(--line);font-style:italic}
+.d{color:var(--acc);font-variant:small-caps;letter-spacing:.05em;border-bottom:1px solid var(--line);margin:14px 0 6px}
+.err{color:var(--acc);margin:8px 0}.dots::after{content:"…";animation:b 1s infinite}@keyframes b{50%{opacity:.2}}
+.rel{display:flex;justify-content:space-between;font-size:14px;padding:3px 0;border-bottom:1px dotted var(--line)}.pos{color:var(--acc2)}.neg{color:var(--acc)}
+@media (max-width:900px){.main{flex-direction:column}.panel{width:auto;border-left:0;border-top:1px solid var(--line);height:52%}.mapwrap{flex:1}}
+</style></head><body><div id="app"></div>
+<script>
+(function(){
+var $=function(s){return document.querySelector(s)};
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+var KEY="chronicle-local-v1",S=null,sample=null,busy=false,tab="orders",lastTA=null,app=$("#app");
+var PRE=[["Byzantium","1453","Constantinople’s walls hold"],["Rome","-100","Caesar never crosses the Rubicon"],["Prussia","1871","Germany never unifies"],["Japan","1936","Japan rejects militarism"],["Soviet Union","1962","The Cuban Missile Crisis ends differently"],["France","1789","The monarchy reforms instead of falling"]];
+var STATS=[["stability","Stability"],["economy","Economy"],["military","Military"],["influence","Influence"]];
+var COLS=["#c0392b","#2980b9","#27ae60","#8e44ad","#d68910","#16a085","#7f8c8d","#c2185b","#5d4037","#00838f"];
+/* crude world land polygons [lon,lat] */
+var POLY=[
+"-168,66 -140,70 -95,72 -80,63 -62,58 -55,50 -67,44 -76,35 -81,25 -97,26 -97,18 -88,16 -83,9 -78,8 -90,14 -105,20 -117,32 -124,40 -125,49 -135,58 -150,60 -165,60",
+"-55,60 -45,60 -20,70 -20,82 -60,82 -70,76",
+"-78,8 -62,11 -50,0 -35,-6 -40,-22 -48,-28 -58,-38 -65,-42 -68,-52 -73,-52 -72,-30 -70,-18 -81,-5",
+"-10,36 -9,43 -2,47 4,52 8,57 12,55 18,60 22,66 30,71 60,69 80,73 105,78 140,72 170,69 180,65 162,58 156,51 142,53 135,43 129,35 122,30 121,22 108,18 109,11 105,9 100,13 101,3 98,8 94,17 88,22 80,15 77,8 73,18 67,24 57,26 59,22 52,16 43,12 38,20 35,29 35,33 36,36 28,37 26,40 23,38 21,40 18,40 16,38 12,42 9,44 3,43 -1,37 -6,36",
+"-17,21 -10,30 -6,36 10,37 11,33 32,31 35,28 43,12 51,12 40,-3 40,-15 35,-24 32,-29 20,-35 17,-30 12,-17 13,-6 9,4 -8,4 -17,14",
+"114,-22 122,-18 131,-12 142,-11 146,-19 153,-27 150,-37 140,-38 130,-32 115,-34",
+"-5,50 1,51 0,57 -5,58 -6,54","130,31 135,34 141,38 142,44 140,40 133,35","44,-25 47,-25 50,-15 49,-12 44,-17"
+].map(function(s){var p=new Path2D(),pts=s.split(" ").map(function(a){return a.split(",").map(Number)});pts.forEach(function(q,i){i?p.lineTo(q[0],q[1]):p.moveTo(q[0],q[1])});p.closePath();return{p:p,pts:pts}});
+var CS=3,GW=120,GH=47,land=new Uint8Array(GW*GH);
+(function(){var c=document.createElement("canvas").getContext("2d");for(var j=0;j<GH;j++)for(var i=0;i<GW;i++){var lo=-180+i*CS+CS/2,la=80-j*CS-CS/2;for(var k=0;k<POLY.length;k++)if(c.isPointInPath(POLY[k].p,lo,la)){land[j*GW+i]=1;break}}})();
+function load(){try{var r=localStorage.getItem(KEY);return r?JSON.parse(r):null}catch(e){return null}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function natIdx(n,col){for(var i=0;i<S.nat.length;i++)if(S.nat[i].n===n){if(col)S.nat[i].c=col;return i}S.nat.push({n:n,c:col||COLS[S.nat.length%COLS.length]});return S.nat.length-1}
+function claim(n,la,lo,r){var id=natIdx(n)+1;for(var j=0;j<GH;j++)for(var i=0;i<GW;i++){if(!land[j*GW+i])continue;var cx=-180+i*CS+CS/2,cy=80-j*CS-CS/2;if(Math.hypot((cx-lo)*Math.cos(cy*Math.PI/180),cy-la)<=r)S.own[j*GW+i]=id}}
+/* ---------- map ---------- */
+var cv,cx,V={z:1,ox:0,oy:0},drag=null;
+function K(){return Math.min(cv.width/360,cv.height/140)*V.z}
+function P(lo,la){var k=K();return[cv.width/2+(lo-0)*k+V.ox,cv.height/2+(la-10)*-k+V.oy]}
+function draw(){
+  if(!cv||!S)return;var w=cv.clientWidth,h=cv.clientHeight,d=devicePixelRatio||1;if(cv.width!==w*d||cv.height!==h*d){cv.width=w*d;cv.height=h*d}
+  var k=K(),st=getComputedStyle(document.documentElement);cx.setTransform(1,0,0,1,0,0);cx.fillStyle=st.getPropertyValue("--sea");cx.fillRect(0,0,cv.width,cv.height);
+  var lc=st.getPropertyValue("--land").trim(),bd=st.getPropertyValue("--bd").trim();
+  var x0=P(-180,80)[0],y0=P(-180,80)[1];
+  POLY.forEach(function(o){cx.beginPath();o.pts.forEach(function(q,i){var p=P(q[0],q[1]);i?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});cx.closePath();cx.fillStyle=lc;cx.fill()});
+  var s=CS*k;
+  for(var j=0;j<GH;j++)for(var i=0;i<GW;i++){var n=j*GW+i,o=S.own[n];if(!land[n]||!o)continue;cx.globalAlpha=.62;cx.fillStyle=S.nat[o-1].c;cx.fillRect(x0+i*s,y0+j*s,s+.5,s+.5)}
+  cx.globalAlpha=1;cx.strokeStyle=bd;cx.lineWidth=Math.max(1.2,d*1.4);cx.beginPath();
+  for(j=0;j<GH;j++)for(i=0;i<GW;i++){n=j*GW+i;if(!land[n])continue;o=S.own[n]||0;
+    if(i<GW-1&&land[n+1]&&(S.own[n+1]||0)!==o){cx.moveTo(x0+(i+1)*s,y0+j*s);cx.lineTo(x0+(i+1)*s,y0+(j+1)*s)}
+    if(j<GH-1&&land[n+GW]&&(S.own[n+GW]||0)!==o){cx.moveTo(x0+i*s,y0+(j+1)*s);cx.lineTo(x0+(i+1)*s,y0+(j+1)*s)}}
+  cx.stroke();cx.globalAlpha=.5;cx.lineWidth=d;POLY.forEach(function(o){cx.beginPath();o.pts.forEach(function(q,i){var p=P(q[0],q[1]);i?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});cx.closePath();cx.stroke()});cx.globalAlpha=1;
+  var fs=Math.max(11,12*d);cx.font="600 "+fs+"px Georgia,serif";cx.textAlign="center";
+  S.cities.forEach(function(c){var p=P(c.lon,c.lat),r=(c.size>=3?6:4)*d;cx.fillStyle="#fff";cx.strokeStyle=colOf(c.owner);cx.lineWidth=2.5*d;cx.beginPath();if(c.capital){cx.rect(p[0]-r,p[1]-r,2*r,2*r)}else cx.arc(p[0],p[1],r,0,7);cx.fill();cx.stroke();
+    if(V.z>=1.2||c.capital||c.size>=3){cx.lineWidth=3*d;cx.strokeStyle="rgba(255,255,255,.85)";cx.fillStyle="#222";cx.strokeText(c.name,p[0],p[1]-r-4*d);cx.fillText(c.name,p[0],p[1]-r-4*d)}});
+  S.units.forEach(function(u){var p=P(u.lon,u.lat),r=10*d;cx.fillStyle=colOf(u.owner);cx.strokeStyle="#fff";cx.lineWidth=2*d;cx.beginPath();cx.arc(p[0],p[1],r,0,7);cx.fill();cx.stroke();cx.fillStyle="#fff";cx.font=(13*d)+"px sans-serif";cx.textBaseline="middle";cx.fillText(({fleet:"⚓",air:"✈",army:"⚔"})[u.type]||"⚔",p[0],p[1]+1);cx.textBaseline="alphabetic"});
+}
+function colOf(n){var i=natIdx0(n);return i<0?"#777":S.nat[i].c}
+function natIdx0(n){for(var i=0;i<S.nat.length;i++)if(S.nat[i].n===n)return i;return -1}
+function unproj(px,py){var k=K(),d=devicePixelRatio||1;return[(px*d-cv.width/2-V.ox)/k,10-(py*d-cv.height/2-V.oy)/k]}
+function mapInit(){
+  cv=$("canvas");cx=cv.getContext("2d");
+  cv.onpointerdown=function(e){cv.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,ox:V.ox,oy:V.oy,m:0}};
+  cv.onpointermove=function(e){if(!drag)return;var d=devicePixelRatio||1;V.ox=drag.ox+(e.clientX-drag.x)*d;V.oy=drag.oy+(e.clientY-drag.y)*d;drag.m=Math.max(drag.m,Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y));draw()};
+  cv.onpointerup=function(e){var m=drag&&drag.m;drag=null;if(m>6)return;var r=cv.getBoundingClientRect(),g=unproj(e.clientX-r.left,e.clientY-r.top),lo=g[0].toFixed(1),la=g[1].toFixed(1),best=null,bd=9;
+    S.cities.forEach(function(c){var dd=Math.hypot(c.lon-g[0],c.lat-g[1]);if(dd<bd){bd=dd;best=c}});
+    var t=(best&&bd<6?"near "+best.name+" ":"")+"("+la+"°, "+lo+"°)";$("#loc").textContent=t;
+    if(lastTA&&document.body.contains(lastTA))lastTA.value=(lastTA.value+" "+t).trim()};
+  $("#zi").onclick=function(){V.z=Math.min(8,V.z*1.5);draw()};$("#zo").onclick=function(){V.z=Math.max(1,V.z/1.5);if(V.z===1){V.ox=V.oy=0}draw()};
+  window.onresize=draw;
+}
+/* ---------- AI ---------- */
+var RULES="You are the game master of a turn-based grand-strategy alternate-history simulation on a world map (coordinates are lat/lon in degrees). Be historically grounded, vivid and consequential: other nations have their own agendas, orders can fail, and the player never simply gets what they want. Reply with ONLY a JSON object, no markdown.";
+var engine=null,MODEL="Qwen2.5-1.5B-Instruct-q4f16_1-MLC",STAT="";
+function status(t){STAT=t;var n=document.getElementById("st");if(n)n.textContent=t}
+async function loadModel(){if(engine)return engine;if(!window.isSecureContext||!navigator.gpu)throw new Error("This page can’t use the iPad’s GPU here. It needs to be opened from a secure (https) web address on a recent iPadOS with WebGPU turned on.");
+  var w=await import("https://esm.run/@mlc-ai/web-llm");engine=await w.CreateMLCEngine(MODEL,{initProgressCallback:function(r){status(r.text)}});status("");return engine}
+async function ask(p){var e=await loadModel(),err;
+  for(var t=0;t<2;t++){try{status("Thinking…");var r=await e.chat.completions.create({messages:[{role:"user",content:p+"\nKeep it compact: at most 5 events, 6 claims, 8 cities, 8 units. Output valid JSON only."}],temperature:0.7,max_tokens:1800,response_format:{type:"json_object"}});status("");var m=r.choices[0].message.content.match(/\{[\s\S]*\}/);return JSON.parse(m[0])}catch(x){err=x}}
+  status("");throw new Error("The on-device AI produced a broken reply. Tap again to retry.")}
+function summary(){var t={};for(var n=0;n<S.own.length;n++){var o=S.own[n];if(!o)continue;var q=t[o]||(t[o]={c:0,la:0,lo:0});q.c++;q.la+=80-Math.floor(n/GW)*CS-CS/2;q.lo+=-180+(n%GW)*CS+CS/2}
+  return S.nat.map(function(x,i){var q=t[i+1];return x.n+(q?": "+q.c+" cells, center ("+Math.round(q.la/q.c)+","+Math.round(q.lo/q.c)+")":": no territory")}).join("; ")}
+function world(){return "Player nation: "+S.nation+"\nDate: "+S.date+" (each turn ≈ "+S.step+")\nTurn: "+S.turn+"\nPlayer stats: "+JSON.stringify(S.stats)+"\nRelations: "+JSON.stringify(S.rel)+"\nNations: "+summary()+"\nCities: "+JSON.stringify(S.cities)+"\nUnits: "+JSON.stringify(S.units)}
+var MAPFMT="\"claims\":[{\"nation\":\"...\",\"lat\":0,\"lon\":0,\"r\":degrees radius 2-25}] (circles of land that change ownership; applied in order, later ones overwrite earlier), \"nations\":[{\"name\":\"...\",\"color\":\"#hex\"}] (any new nation), \"cities\":[{\"name\":\"...\",\"lat\":0,\"lon\":0,\"owner\":\"nation\",\"size\":1-4,\"capital\":true/false}] (cities to add or update, matched by name), \"units\":[{\"id\":\"...\",\"owner\":\"nation\",\"type\":\"army|fleet|air\",\"lat\":0,\"lon\":0}] (the COMPLETE list of units now on the map, keep ids stable)";
+function applyMap(j){
+  (j.nations||[]).forEach(function(n){if(n&&n.name)natIdx(n.name,/^#[0-9a-f]{6}$/i.test(n.color||"")?n.color:null)});
+  (j.claims||[]).forEach(function(c){if(c&&c.nation&&isFinite(c.lat)&&isFinite(c.lon))claim(c.nation,+c.lat,+c.lon,Math.min(30,+c.r||5))});
+  (j.cities||[]).forEach(function(c){if(!c||!c.name||!isFinite(c.lat))return;natIdx(c.owner||S.nation);var o=S.cities.filter(function(x){return x.name===c.name})[0];if(o)Object.assign(o,c);else S.cities.push(c)});
+  if(Array.isArray(j.units))S.units=j.units.filter(function(u){return u&&isFinite(u.lat)&&isFinite(u.lon)});
+  if(j.stats)STATS.forEach(function(s){if(typeof j.stats[s[0]]==="number")S.stats[s[0]]=Math.max(0,Math.min(100,Math.round(j.stats[s[0]])))});
+  if(j.relations&&typeof j.relations==="object")S.rel=j.relations;
+  if(j.date)S.date=String(j.date);if(Array.isArray(j.options))S.options=j.options.slice(0,4);
+}
+async function start(){
+  busy=true;render();
+  try{
+    var j=await ask(RULES+"\nStart a new game. Player nation: "+S.nation+". Start date: "+S.start+(S.diverge?". Point of divergence: "+S.diverge:"")+". Populate the world map as it stood then (all major powers, 12-25 cities including every capital, 6-15 units) and apply the divergence. Each nation must have territory via claims, listed big-to-small. The player nation name must appear exactly as given. JSON: {\"date\":\"\",\"intro\":\"2 short paragraphs setting the scene to the ruler\",\"stats\":{\"stability\":0-100,\"economy\":0-100,\"military\":0-100,\"influence\":0-100},\"relations\":{\"Nation\":-100..100},\"options\":[\"3 suggested actions\"],"+MAPFMT+"}");
+    natIdx(S.nation);applyMap(j);S.log.push({date:S.date,events:[],text:j.intro||""});save();
+  }catch(e){S.err=e.message}
+  busy=false;render();
+}
+async function dipSend(to,text){
+  busy=true;S.dip.push({to:to,me:text});render();
+  try{var j=await ask(RULES+"\n"+world()+"\nDiplomacy this turn so far: "+JSON.stringify(S.dip.slice(-8))+"\nThe player sends this message to "+to+": \""+text+"\"\nReply in character as that nation’s leadership, fitting its interests, relations and history; they may refuse, bargain or demand. JSON: {\"reply\":\"1-3 sentences\",\"deal\":\"one-line summary of any binding agreement reached, or empty string\",\"relation\":new relation value -100..100}");
+    var d=S.dip[S.dip.length-1];d.reply=j.reply||"…";d.deal=j.deal||"";if(typeof j.relation==="number")S.rel[to]=Math.round(j.relation);save()}
+  catch(e){S.err=e.message;S.dip.pop()}
+  busy=false;render();
+}
+async function endTurn(){
+  busy=true;S.err="";render();
+  try{
+    var j=await ask(RULES+"\n"+world()+"\nPlayer’s actions this turn (max 3): "+JSON.stringify(S.queue)+"\nDiplomatic exchanges and deals this turn: "+JSON.stringify(S.dip)+"\nSimulate everything that happens as time advances by about "+S.step+": the player’s actions (with realistic success or failure), the deals, and the independent moves of every other nation (wars, alliances, rebellions, expansion, disasters). Change borders, found or capture cities, and move units to match. JSON: {\"date\":\"new date\",\"events\":[{\"title\":\"\",\"text\":\"1-2 sentences\",\"major\":true/false}] (3-8 events, major first),\"summary\":\"one paragraph overview to the ruler\",\"stats\":{...new values},\"relations\":{...},\"options\":[\"3 suggested next actions\"],"+MAPFMT+"}");
+    applyMap(j);S.log.push({date:S.date,acts:S.queue.slice(),events:j.events||[],text:j.summary||""});S.queue=[];S.dip=[];S.turn++;tab="log";save();
+  }catch(e){S.err=e.message}
+  busy=false;render();
+}
+/* ---------- UI ---------- */
+function setup(){
+  app.innerHTML="";var w=el("div","setup"),n=el("input"),y=el("input"),dv=el("textarea"),step="1 year";
+  w.appendChild(el("h1",null,"Chronicle")).style.fontSize="30px";
+  w.appendChild(el("p",null,"Rewrite history on a living map. Each turn: up to three actions, unlimited diplomacy, then end your turn and watch the world respond."));
+  n.type=y.type="text";n.placeholder="Any nation, empire or city-state";y.placeholder="Year, e.g. 1914 (negative for BC)";dv.placeholder="What changes? (optional)";
+  var ch=el("div","chips");PRE.forEach(function(p){var c=el("button","chip",p[0]+" "+(+p[1]<0?-p[1]+" BC":p[1]));c.onclick=function(){n.value=p[0];y.value=p[1];dv.value=p[2]};ch.appendChild(c)});
+  w.appendChild(el("label",null,"Quick scenarios"));w.appendChild(ch);
+  [["Nation",n],["Starting year",y],["Point of divergence",dv]].forEach(function(a){w.appendChild(el("label",null,a[0]));w.appendChild(a[1])});
+  w.appendChild(el("label",null,"Each turn lasts"));var sg=el("div","chips");
+  ["1 month","6 months","1 year","5 years"].forEach(function(s){var c=el("button","chip"+(s===step?" on":""),s);c.onclick=function(){step=s;[].forEach.call(sg.children,function(x){x.classList.toggle("on",x===c)})};sg.appendChild(c)});w.appendChild(sg);
+  var er=el("div","err"),go=el("button","btn p","Begin");go.style.cssText="margin-top:20px;width:100%";
+  go.onclick=function(){if(!n.value.trim()||!y.value.trim()){er.textContent="Please enter a nation and a year.";return}
+    S={nation:n.value.trim(),start:y.value.trim(),diverge:dv.value.trim(),step:step,date:y.value.trim(),turn:1,stats:{stability:60,economy:55,military:50,influence:45},rel:{},nat:[],own:new Array(GW*GH).fill(0),cities:[],units:[],queue:[],dip:[],log:[],options:[],err:""};
+    tab="orders";V={z:1,ox:0,oy:0};layout();start()};
+  w.appendChild(er);w.appendChild(go);var old=load();
+  if(old){var r=el("button","btn","Continue: "+old.nation+", "+old.date);r.style.cssText="margin-top:12px;width:100%";r.onclick=function(){S=old;V={z:1,ox:0,oy:0};layout();render()};w.appendChild(r)}
+  app.appendChild(w);
+}
+function layout(){
+  app.innerHTML="";var top=el("div","top"),h=el("div");h.appendChild(el("h1",null,S.nation));var dt=el("div","date");dt.id="dt";h.appendChild(dt);
+  var nb=el("button","btn","New game");nb.onclick=function(){if(confirm("Leave this game? It stays saved until you start another."))setup()};top.appendChild(h);top.appendChild(nb);app.appendChild(top);
+  var m=el("div","main"),mw=el("div","mapwrap");mw.innerHTML='<canvas></canvas><div class="zoom"><button id="zi">+</button><button id="zo">−</button></div><div id="loc">Tap the map to target a location</div>';
+  var pn=el("div","panel"),tb=el("div","tabs");[["orders","Orders"],["dip","Diplomacy"],["log","Chronicle"]].forEach(function(t){var b=el("button",null,t[1]);b.dataset.t=t[0];b.onclick=function(){tab=t[0];render()};tb.appendChild(b)});
+  var bd=el("div","body");bd.id="bd";var ft=el("div","foot");ft.id="ft";pn.appendChild(tb);pn.appendChild(bd);pn.appendChild(ft);m.appendChild(mw);m.appendChild(pn);app.appendChild(m);mapInit();
+}
+function field(ph){var t=el("textarea");t.placeholder=ph;t.onfocus=function(){lastTA=t};lastTA=t;return t}
+function render(){
+  $("#dt").textContent=S.date+" · Turn "+S.turn;
+  [].forEach.call(document.querySelectorAll(".tabs button"),function(b){b.classList.toggle("on",b.dataset.t===tab)});
+  var bd=$("#bd"),ft=$("#ft"),keep=bd.scrollTop;bd.innerHTML="";ft.innerHTML="";
+  if(S.err)bd.appendChild(el("div","err",S.err));if(busy){var sd=el("div",null,STAT);sd.id="st";sd.style.cssText="color:var(--mute);font-size:14px";bd.appendChild(sd)}
+  if(!S.log.length&&busy){bd.appendChild(el("div","dots","Building the world"));draw();return}
+  if(tab==="orders"){
+    var g=el("div","stats");STATS.forEach(function(s){var d=el("div");d.appendChild(el("div",null,s[1]+" "+S.stats[s[0]]));var b=el("div","bar"),i=el("i");i.style.width=S.stats[s[0]]+"%";b.appendChild(i);d.appendChild(b);g.appendChild(d)});bd.appendChild(g);
+    bd.appendChild(el("h3",null,"Actions ("+S.queue.length+"/3)"));
+    S.queue.forEach(function(a,i){var r=el("div","act");r.appendChild(el("span",null,a));var x=el("button",null,"×");x.onclick=function(){S.queue.splice(i,1);save();render()};r.appendChild(x);bd.appendChild(r)});
+    if(S.queue.length<3){var t=field("Issue an order, e.g. “Raise an army in Anatolia” (tap the map to add a location)"),add=el("button","btn","Add action");add.style.cssText="margin-top:8px;width:100%";add.onclick=function(){if(t.value.trim()){S.queue.push(t.value.trim());save();render()}};bd.appendChild(t);bd.appendChild(add);
+      var c=el("div","chips");(S.options||[]).forEach(function(o){var b=el("button","chip",o);b.onclick=function(){t.value=o};c.appendChild(b)});bd.appendChild(c)}
+    var rk=Object.keys(S.rel);if(rk.length){var h=el("h3",null,"Relations");h.style.marginTop="16px";bd.appendChild(h);rk.forEach(function(k){var r=el("div","rel");r.appendChild(el("span",null,k));var v=S.rel[k];r.appendChild(el("span",v>=0?"pos":"neg",(v>0?"+":"")+v));bd.appendChild(r)})}
+  }else if(tab==="dip"){
+    bd.appendChild(el("p",null,"Unlimited diplomacy each turn. Agreements are carried into the simulation when you end your turn."));
+    S.dip.forEach(function(d){bd.appendChild(el("div","msg me","To "+d.to+": "+d.me));if(d.reply)bd.appendChild(el("div","msg",d.to+": "+d.reply));if(d.deal)bd.appendChild(el("div","ev","Agreement: "+d.deal))});
+    if(busy)bd.appendChild(el("div","dots","Awaiting reply"));
+    var sel=el("select");S.nat.forEach(function(x){if(x.n!==S.nation){var o=el("option",null,x.n);sel.appendChild(o)}});sel.style.marginBottom="8px";
+    var t=field("Your message, proposal or ultimatum…"),b=el("button","btn p","Send");b.style.cssText="margin-top:8px;width:100%";b.disabled=busy||!sel.value;
+    b.onclick=function(){if(t.value.trim())dipSend(sel.value,t.value.trim())};ft.appendChild(sel);ft.appendChild(t);ft.appendChild(b);
+  }else{
+    S.log.slice().reverse().forEach(function(l){bd.appendChild(el("div","d",l.date));(l.acts||[]).forEach(function(a){bd.appendChild(el("div","msg me",a))});if(l.text)bd.appendChild(el("p",null,l.text));(l.events||[]).forEach(function(e){var d=el("div","ev"+(e.major?"":" m"));d.appendChild(el("b",null,(e.major?"★ ":"")+e.title));d.appendChild(el("span",null,e.text));bd.appendChild(d)})});
+  }
+  if(tab!=="dip"){var e=el("button","btn p",busy?"The world turns…":"End turn");e.style.width="100%";e.disabled=busy;e.onclick=endTurn;ft.appendChild(e)}
+  bd.scrollTop=tab==="dip"?bd.scrollHeight:keep;draw();
+}
+setup();
+})();
+</script></body></html>
