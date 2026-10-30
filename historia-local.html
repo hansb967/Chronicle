@@ -134,12 +134,19 @@ var engine=null,MODEL="Qwen2.5-3B-Instruct-q4f16_1-MLC",STAT="";
 function status(t){STAT=t;var n=document.getElementById("st");if(n)n.textContent=t}
 async function loadModel(){if(engine)return engine;if(!window.isSecureContext||!navigator.gpu)throw new Error("This page can’t use the iPad’s GPU here. It needs to be opened from a secure (https) web address on a recent iPadOS with WebGPU turned on.");
   var w=await import("https://esm.run/@mlc-ai/web-llm");engine=await w.CreateMLCEngine(MODEL,{initProgressCallback:function(r){status(r.text)}});status("");return engine}
-async function ask(p){var e=await loadModel(),err;var df=DIFFS[S.diff]||DIFFS.Normal;p="DIFFICULTY ("+(S.diff||"Normal")+"): "+df.ai+"\n"+p;
-  for(var t=0;t<2;t++){try{status("Thinking…");var r=await e.chat.completions.create({messages:[{role:"user",content:p+"\nKeep it compact: at most 6 events, 8 claims, 12 cities, 10 units. Output valid JSON only."}],temperature:0.7,max_tokens:2200,response_format:{type:"json_object"}});status("");var m=r.choices[0].message.content.match(/\{[\s\S]*\}/);return JSON.parse(m[0])}catch(x){err=x}}
-  status("");throw new Error("The on-device AI produced a broken reply. Tap again to retry.")}
+function closeUp(t){var st=[],q=false,x=false;for(var k=0;k<t.length;k++){var c=t[k];if(q){if(x)x=false;else if(c==="\\")x=true;else if(c==='"')q=false;continue}if(c==='"')q=true;else if(c==="{"||c==="[")st.push(c==="{"?"}":"]");else if((c==="}"||c==="]")&&st.length)st.pop()}return(q?t+'"':t)+st.reverse().join("")}
+function repair(t){var i=t.indexOf("{");if(i<0)return null;t=t.slice(i).replace(/```[a-z]*/g,"");
+  try{return JSON.parse(t.slice(0,t.lastIndexOf("}")+1))}catch(e){}
+  var out=t;for(var n=0;n<80;n++){try{return JSON.parse(closeUp(out.replace(/[\s,:]+$/,"")))}catch(e){}var p=out.lastIndexOf(",");if(p<1)break;out=out.slice(0,p)}
+  return null}
+async function ask(p){var e=await loadModel(),raw="",why="";var df=DIFFS[S.diff]||DIFFS.Normal;p="DIFFICULTY ("+(S.diff||"Normal")+"): "+df.ai+"\n"+p+"\nKeep it compact: at most 6 events, 8 claims, 12 cities, 10 units. Output valid JSON only.";
+  for(var t=0;t<3;t++){try{status("Thinking…"+(t?" (retry "+t+")":""));try{await e.resetChat()}catch(x){}
+      var o={messages:[{role:"user",content:p}],temperature:t===2?0.3:0.6,max_tokens:1600};if(t===1)o.response_format={type:"json_object"};
+      var r=await e.chat.completions.create(o);raw=(r.choices[0].message.content||"");var j=repair(raw);if(j&&typeof j==="object"&&!Array.isArray(j)){status("");return j}why="no valid JSON in reply"}catch(x){why=(x&&x.message)||String(x)}}
+  status("");throw new Error("The on-device AI failed: "+why+(raw?" | It replied: "+raw.slice(0,200):""))}
 function summary(){var t={};for(var n=0;n<S.own.length;n++){var o=S.own[n];if(!o)continue;var q=t[o]||(t[o]={c:0,la:0,lo:0});q.c++;q.la+=80-Math.floor(n/GW)*CS-CS/2;q.lo+=-180+(n%GW)*CS+CS/2}
   return S.nat.map(function(x,i){var q=t[i+1];return x.n+(q?": "+q.c+" cells, center ("+Math.round(q.la/q.c)+","+Math.round(q.lo/q.c)+")":": no territory")}).join("; ")}
-function world(){return "Player nation: "+S.nation+"\nDate: "+S.date+" (each turn ≈ "+S.step+")\nTurn: "+S.turn+"\nPlayer stats: "+JSON.stringify(S.stats)+"\nRelations: "+JSON.stringify(S.rel)+"\nNations: "+summary()+"\nCities: "+JSON.stringify(S.cities)+"\nUnits: "+JSON.stringify(S.units)}
+function world(){var cs=S.cities.slice(0,30).map(function(c){return c.name+" "+Math.round(c.lat)+","+Math.round(c.lon)+" "+c.owner+(c.capital?" capital":"")}).join("; "),us=S.units.slice(0,16).map(function(u){return u.id+" "+u.type+" "+u.owner+" "+Math.round(u.lat)+","+Math.round(u.lon)}).join("; ");return "Player nation: "+S.nation+"\nDate: "+S.date+" (each turn ≈ "+S.step+")\nTurn: "+S.turn+"\nPlayer stats: "+JSON.stringify(S.stats)+"\nRelations: "+JSON.stringify(S.rel)+"\nNations: "+summary()+"\nCities: "+cs+"\nUnits: "+us}
 var MAPFMT="\"claims\":[{\"nation\":\"...\",\"lat\":0,\"lon\":0,\"r\":degrees radius 2-25}] (circles of land that change ownership; applied in order, later ones overwrite earlier), \"nations\":[{\"name\":\"...\",\"color\":\"#hex\"}] (any new nation), \"cities\":[{\"name\":\"...\",\"lat\":0,\"lon\":0,\"owner\":\"nation\",\"size\":1-4,\"capital\":true/false}] (cities to add or update, matched by name), \"units\":[{\"id\":\"...\",\"owner\":\"nation\",\"type\":\"army|fleet|air\",\"lat\":0,\"lon\":0}] (the COMPLETE list of units now on the map, keep ids stable)";
 function applyMap(j){
   (j.nations||[]).forEach(function(n){if(n&&n.name)natIdx(n.name,/^#[0-9a-f]{6}$/i.test(n.color||"")?n.color:null)});
